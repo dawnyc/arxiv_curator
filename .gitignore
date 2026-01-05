@@ -1,4 +1,3 @@
-
-backend\__pycache__
-backend\venv
-backend\arxiv.db
+backend/__pycache__/
+backend/venv/
+backend/arxiv.db
