@@ -28,7 +28,7 @@ Arxiv Curator 是一个基于 FastAPI 和 Vue 3 构建的轻量级 Arxiv 论文�
 ### 1. 获取代码
 
 ```bash
-git clone <repository-url>
+git clone [<repository-url>](https://github.com/dawnyc/arxiv_curator.git)
 cd arxiv_curator
 ```
 
@@ -104,8 +104,9 @@ arxiv_curator/
 │   ├── database.py       # SQLite 数据库连接
 │   ├── arxiv.db          # SQLite 数据库文件 (自动生成)
 │   └── requirements.txt  # Python 依赖
-└── frontend/
-    └── index.html        # 单页应用入口 (Vue 3 + Tailwind CSS)
+├── frontend/
+│   └── index.html        # 单页应用入口 (Vue 3 + Tailwind CSS)
+└── README.md
 ```
 
 ## 📝 注意事项
