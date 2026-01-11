@@ -197,13 +197,13 @@
         <!-- Search / Filter (Only on home) -->
         <div v-if="!showFavorites" class="p-4 bg-white border-b space-y-2 z-10">
             <div class="flex space-x-2 items-end">
-                <!-- Toggle between Date Search and ID Search -->
-                <button @click="searchMode = searchMode === 'date' ? 'id' : 'date'" class="h-10 px-2 bg-gray-100 rounded text-xl" title="Switch Search Mode">
-                    {{ searchMode === 'date' ? '📅' : '🆔' }}
+                <!-- Toggle between Date Search, ID Search, and Keyword Search -->
+                <button @click="toggleSearchMode" class="h-10 px-2 bg-gray-100 rounded text-xl" :title="searchModeTitle">
+                    {{ searchModeIcon }}
                 </button>
 
                 <!-- Date Search Mode -->
-                <div v-if="searchMode === 'date'" class="flex space-x-2 flex-grow">
+                <div v-if="searchMode === 'date'" class="flex space-x-2 flex-grow animate-fade-in">
                     <div class="w-full">
                         <label class="block text-xs text-gray-500 mb-1">Submission Date (UTC)</label>
                         <input type="date" v-model="searchDate" class="border p-2 rounded w-full text-sm h-10">
@@ -220,9 +220,46 @@
                 </div>
 
                 <!-- ID Search Mode -->
-                <div v-else class="flex-grow">
+                <div v-else-if="searchMode === 'id'" class="flex-grow animate-fade-in">
                      <label class="block text-xs text-gray-500 mb-1">Paper ID (e.g. 2310.12345)</label>
                      <input type="text" v-model="searchId" placeholder="Enter Arxiv ID..." class="border p-2 rounded w-full text-sm h-10">
+                </div>
+
+                <!-- Keyword Search Mode -->
+                <div v-else-if="searchMode === 'keyword'" class="flex space-x-2 flex-grow animate-fade-in">
+                    <div class="w-1/3">
+                        <label class="block text-xs text-gray-500 mb-1">Keyword</label>
+                        <select v-model="searchKeyword" class="border p-2 rounded w-full text-sm h-10 bg-white">
+                            <option value="">Any</option>
+                            <option value="Large Language Model">LLM</option>
+                            <option value="Generative">Generative</option>
+                            <option value="Transformer">Transformer</option>
+                            <option value="Diffusion">Diffusion</option>
+                            <option value="Reinforcement Learning">RL</option>
+                            <option value="Agent">Agent</option>
+                            <option value="Vision">Vision</option>
+                            <option value="Technical Report">Technical Report</option>
+                        </select>
+                    </div>
+                    <div class="w-1/3">
+                        <label class="block text-xs text-gray-500 mb-1">Time Range</label>
+                        <select v-model="searchDaysBack" class="border p-2 rounded w-full text-sm h-10 bg-white">
+                            <option :value="1">Last 1 Day</option>
+                            <option :value="2">Last 2 Days</option>
+                            <option :value="3">Last 3 Days</option>
+                            <option :value="7">Last 1 Week</option>
+                            <option :value="30">Last 1 Month</option>
+                        </select>
+                    </div>
+                    <div class="w-1/3">
+                        <label class="block text-xs text-gray-500 mb-1">Category</label>
+                        <select v-model="category" class="border p-2 rounded w-full text-sm h-10 bg-white">
+                            <option value="cs.AI">cs.AI</option>
+                            <option value="cs.CV">cs.CV</option>
+                            <option value="cs.LG">cs.LG</option>
+                            <option value="cs.CL">cs.CL</option>
+                        </select>
+                    </div>
                 </div>
             </div>
             <button @click="fetchPapers" :disabled="loading" class="w-full bg-indigo-600 text-white p-2 rounded font-bold disabled:opacity-50">
@@ -324,7 +361,7 @@
             </div>
             
             <!-- Floating Action Bar (Always on top of everything) -->
-            <div v-if="papers.length > 0 && currentIndex < papers.length" class="absolute bottom-20 left-4 right-4 bg-white/90 backdrop-blur shadow-lg rounded-xl border p-3 flex justify-between items-center z-50">
+            <div v-if="!showLanding && !showFavorites && papers.length > 0 && currentIndex < papers.length" class="absolute bottom-20 left-4 right-4 bg-white/90 backdrop-blur shadow-lg rounded-xl border p-3 flex justify-between items-center z-50">
                 <a :href="papers[currentIndex].pdf_url" target="_blank" class="text-xs bg-blue-50 text-blue-600 px-3 py-2 rounded-lg font-bold hover:bg-blue-100 flex-grow text-center mr-2">
                     📄 Read PDF
                 </a>
@@ -334,7 +371,7 @@
             </div>
             
             <!-- Controls (for desktop mostly) -->
-            <div v-if="papers.length > 0 && currentIndex < papers.length" class="absolute bottom-6 left-4 right-4 flex justify-between space-x-4 z-20 pointer-events-auto">
+            <div v-if="!showLanding && !showFavorites && papers.length > 0 && currentIndex < papers.length" class="absolute bottom-6 left-4 right-4 flex justify-between space-x-4 z-20 pointer-events-auto">
                 <button 
                     @click="swipe('left')" 
                     class="flex-1 bg-white border border-gray-200 text-gray-400 h-14 rounded-xl shadow-sm flex items-center justify-center space-x-2 hover:bg-gray-50 hover:text-red-500 hover:border-red-200 transition-all duration-200 group"
@@ -403,9 +440,11 @@
         createApp({
             setup() {
                 const API_BASE = '/api';
-                const searchMode = ref('date'); // 'date' or 'id'
+                const searchMode = ref('date'); // 'date', 'id', 'keyword'
                 const searchDate = ref(new Date().toISOString().split('T')[0]);
                 const searchId = ref('');
+                const searchKeyword = ref('');
+                const searchDaysBack = ref(1);
                 const category = ref('cs.AI');
                 const papers = ref([]);
                 const favorites = ref([]);
@@ -509,6 +548,7 @@
                         currentIndex: currentIndex.value,
                         searchDate: searchDate.value,
                         category: category.value,
+                        showFavorites: showFavorites.value, // Save favorites view state
                         timestamp: Date.now()
                     }));
                 };
@@ -520,10 +560,16 @@
                             const state = JSON.parse(saved);
                             // Only restore if less than 24 hours old
                             if (Date.now() - state.timestamp < 24 * 60 * 60 * 1000) {
-                                papers.value = state.papers || [];
+                                let restoredPapers = state.papers || [];
+                                // Reset 'is_analyzing' flag for all papers to prevent stuck UI
+                                restoredPapers.forEach(p => {
+                                    if (p.is_analyzing) p.is_analyzing = false;
+                                });
+                                papers.value = restoredPapers;
                                 currentIndex.value = state.currentIndex || 0;
                                 searchDate.value = state.searchDate || searchDate.value;
                                 category.value = state.category || category.value;
+                                showFavorites.value = state.showFavorites || false; // Restore favorites view state
                                 return true;
                             }
                         } catch (e) {
@@ -537,8 +583,9 @@
                 onMounted(() => {
                     loadConfig(); // Load full config
                     
-                    // Restore session if valid (handles refresh)
-                    const sessionMode = sessionStorage.getItem('arxiv_session_mode');
+                    // Restore session if valid (handles refresh and back navigation)
+                    // We now use localStorage for session mode to persist across external link navigation on mobile
+                    const sessionMode = localStorage.getItem('arxiv_session_mode');
                     const savedKey = localStorage.getItem('arxiv_openai_key');
                     const stateRestored = restoreState(); 
 
@@ -560,8 +607,8 @@
                 });
 
                 // Auto-save state when relevant data changes
-                watch([currentIndex, papers], () => {
-                    if (papers.value.length > 0) saveState();
+                watch([currentIndex, papers, showFavorites], () => {
+                    if (papers.value.length > 0 || showFavorites.value) saveState();
                 });
 
                 const startApp = () => {
@@ -569,7 +616,7 @@
                     showLanding.value = false;
                     searchDate.value = new Date().toISOString().split('T')[0];
                     // Mark session as fully authenticated (AI enabled)
-                    sessionStorage.setItem('arxiv_session_mode', 'authenticated');
+                    localStorage.setItem('arxiv_session_mode', 'authenticated');
                     fetchFavorites();
                 };
 
@@ -580,13 +627,35 @@
                     apiKey.value = '';
                     
                     // Mark session as anonymous (AI disabled)
-                    sessionStorage.setItem('arxiv_session_mode', 'anonymous');
+                    localStorage.setItem('arxiv_session_mode', 'anonymous');
                     
                     // Reset date to today on skip (browse mode)
                     searchDate.value = new Date().toISOString().split('T')[0];
                     
                     fetchFavorites();
                 };
+
+                const toggleSearchMode = () => {
+                    const modes = ['date', 'id', 'keyword'];
+                    const nextIndex = (modes.indexOf(searchMode.value) + 1) % modes.length;
+                    searchMode.value = modes[nextIndex];
+                };
+
+                const searchModeIcon = computed(() => {
+                    switch(searchMode.value) {
+                        case 'date': return '📅';
+                        case 'id': return '🆔';
+                        case 'keyword': return '🔍';
+                    }
+                });
+
+                const searchModeTitle = computed(() => {
+                    switch(searchMode.value) {
+                        case 'date': return 'Search by Date';
+                        case 'id': return 'Search by ID';
+                        case 'keyword': return 'Search by Keyword';
+                    }
+                });
 
                 // Fetch papers
                 const fetchPapers = async () => {
@@ -601,6 +670,12 @@
                                 return;
                             }
                             params = { paper_id: searchId.value.trim() };
+                        } else if (searchMode.value === 'keyword') {
+                            params = { 
+                                category: category.value,
+                                keyword: searchKeyword.value,
+                                days_back: searchDaysBack.value
+                            };
                         } else {
                             params = { category: category.value, search_date: searchDate.value };
                         }
@@ -627,7 +702,7 @@
 
                 const analyzePaper = async (paper) => {
                     // Check session mode first
-                    const sessionMode = sessionStorage.getItem('arxiv_session_mode');
+                    const sessionMode = localStorage.getItem('arxiv_session_mode');
                     if (sessionMode !== 'authenticated') {
                         alert('You are in Browse Mode. Please log in with your API Key to use AI features.');
                         return;
@@ -717,8 +792,9 @@
                         // Clear Local Storage
                         localStorage.removeItem('arxiv_openai_key');
                         localStorage.removeItem('arxiv_state');
+                        localStorage.removeItem('arxiv_session_mode');
                         
-                        // Clear Session Storage (Crucial for preventing auto-login on refresh)
+                        // Clear Session Storage (Just in case)
                         sessionStorage.removeItem('arxiv_session_mode');
                         
                         // Reset State
@@ -883,7 +959,7 @@
                     startDrag, onDrag, endDrag, swipe,
                     showConfirmModal, confirmMessage, executeConfirm,
                     showConfigModal, config, saveConfig, resetConfig,
-                    searchMode, searchId
+                    searchMode, searchId, searchKeyword, searchDaysBack, toggleSearchMode, searchModeIcon, searchModeTitle
                 };
             }
         }).mount('#app');

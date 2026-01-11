@@ -33,6 +33,8 @@ def search_papers(
     category: Optional[str] = Query(None, description="Arxiv category, e.g., cs.AI"),
     search_date: Optional[date] = Query(None, description="Date to search"),
     paper_id: Optional[str] = Query(None, description="Specific paper ID"),
+    keyword: Optional[str] = Query(None, description="Search keyword"),
+    days_back: Optional[int] = Query(None, description="Number of days to search back"),
     db: Session = Depends(get_db)
 ):
     papers_data = []
@@ -42,9 +44,12 @@ def search_papers(
         single_paper = services.get_paper_by_id_from_arxiv(paper_id)
         if single_paper:
             papers_data = [single_paper]
+    # Case 2: Search by Keyword + Date Range (or just Date Range)
+    elif category and (keyword or days_back):
+        papers_data = services.get_papers_from_arxiv(category, search_date=search_date, keyword=keyword, days_back=days_back)
     # Case 2: Search by Date/Category (Standard)
     elif category and search_date:
-        papers_data = services.get_papers_from_arxiv(category, search_date)
+        papers_data = services.get_papers_from_arxiv(category, search_date=search_date)
     else:
         # Fallback or bad request if neither provided (though optional, logic requires one path)
         return []

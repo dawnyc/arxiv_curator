@@ -5,44 +5,73 @@ import models, schemas
 import os
 from openai import OpenAI
 
-def get_papers_from_arxiv(category: str, search_date: date, limit: int = 1000):
+def get_papers_from_arxiv(category: str, search_date: date = None, limit: int = 1000, keyword: str = None, days_back: int = None):
     # Construct query with date range
-    # Use lastUpdatedDate for filtering to get papers updated/published on that specific day
-    date_str = search_date.strftime("%Y%m%d")
-    query = f"cat:{category} AND lastUpdatedDate:[{date_str}0000 TO {date_str}2359]"
+    query_parts = [f"cat:{category}"]
+
+    if keyword:
+        # Search for keyword in all fields (title, abstract, etc.)
+        query_parts.append(f'all:"{keyword}"')
     
-    client = arxiv.Client()
+    if search_date:
+        # Exact date search
+        # Use lastUpdatedDate for filtering to get papers updated/published on that specific day
+        date_str = search_date.strftime("%Y%m%d")
+        query_parts.append(f"lastUpdatedDate:[{date_str}0000 TO {date_str}2359]")
+    elif days_back:
+        # Date range search
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days_back)
+        start_str = start_date.strftime("%Y%m%d")
+        end_str = end_date.strftime("%Y%m%d")
+        query_parts.append(f"lastUpdatedDate:[{start_str}0000 TO {end_str}2359]")
+    
+    query = " AND ".join(query_parts)
+
+    # Increase delay and retries to avoid 429 errors
+    # Reduce page_size to 100 to be gentler on the API
+    client = arxiv.Client(
+        page_size=min(limit, 100),
+        delay_seconds=10.0,
+        num_retries=10
+    )
     
     search = arxiv.Search(
         query = query,
         max_results = limit,
-        sort_by = arxiv.SortCriterion.LastUpdatedDate,
+        sort_by = arxiv.SortCriterion.SubmittedDate,
         sort_order = arxiv.SortOrder.Descending
     )
 
     results = []
-    
-    for r in client.results(search):
-        # We don't need strict date filtering here because query handles it,
-        # but arxiv date format might be slightly different (published vs submitted).
-        # We accept all results returned by the query.
-        authors = ", ".join([a.name for a in r.authors])
-        
-        # Capture all categories
-        # r.categories is a list like ['cs.AI', 'cs.LG']
-        categories = ", ".join(r.categories)
-        
-        paper = schemas.PaperCreate(
-            id=r.entry_id.split('/')[-1],
-            title=r.title,
-            summary=r.summary,
-            authors=authors,
-            published_date=r.updated.date(), # Use updated date as the 'published_date' field for display
-            category=categories, # Store all categories joined by comma
-            pdf_url=r.pdf_url
-        )
-        results.append(paper)
+
+    try:
+        for r in client.results(search):
+            # We don't need strict date filtering here because query handles it,
+            # but arxiv date format might be slightly different (published vs submitted).
+            # We accept all results returned by the query.
+            authors = ", ".join([a.name for a in r.authors])
             
+            # Capture all categories
+            # r.categories is a list like ['cs.AI', 'cs.LG']
+            categories = ", ".join(r.categories)
+            
+            paper = schemas.PaperCreate(
+                id=r.entry_id.split('/')[-1],
+                title=r.title,
+                summary=r.summary,
+                authors=authors,
+                published_date=r.updated.date(), # Use updated date as the 'published_date' field for display
+                category=categories, # Store all categories joined by comma
+                pdf_url=r.pdf_url
+            )
+            results.append(paper)
+    except Exception as e:
+        print(f"Error fetching from Arxiv: {e}")
+        # Return empty list or handle gracefully
+        # If it's a 429, we might want to signal that.
+        return []
+
     return results
 
 def get_paper_by_id_from_arxiv(paper_id: str):
